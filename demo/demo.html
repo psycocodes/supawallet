@@ -1,0 +1,36 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:linear-gradient(135deg,#1b1035,#0e3b4a);height:100vh;display:flex;align-items:center;justify-content:center;font-family:Menlo,Consolas,monospace}
+.win{width:1180px;height:640px;background:#0d1117;border-radius:12px;box-shadow:0 20px 60px #0008;overflow:hidden;display:flex;flex-direction:column}
+.bar{height:32px;background:#21262d;display:flex;align-items:center;padding-left:12px;gap:8px;color:#8b949e;font-size:13px}
+.d{width:12px;height:12px;border-radius:50%}
+#t{flex:1;padding:18px 22px;color:#c9d1d9;font-size:15px;line-height:1.45;white-space:pre-wrap;overflow:hidden}
+.c{color:#7ee787}.p{color:#79c0ff}.o{color:#c9d1d9}.e{color:#ff7b72}.h{color:#d2a8ff;font-weight:bold}.n{color:#8b949e}
+#card{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-family:system-ui,sans-serif;background:linear-gradient(135deg,#1b1035,#0e3b4a);transition:opacity .6s}
+#card h1{font-size:64px;margin:0 0 16px}#card p{font-size:26px;margin:6px;color:#c9d1d9;max-width:1000px;text-align:center}
+</style></head><body>
+<div class="win"><div class="bar"><span class="d" style="background:#ff5f56"></span><span class="d" style="background:#ffbd2e"></span><span class="d" style="background:#27c93f"></span>&nbsp; supawallet — solana-test-validator (local)</div><div id="t"></div></div>
+<div id="card"><h1>SupaWallet</h1><p>Every GitHub user already has a Solana wallet.</p><p>Pay anyone by GitHub ID. They spend with stock <b>ssh-keygen</b> and the SSH key on their profile.</p></div>
+<script>
+const steps=[
+["n","# 1. Put the user's GitHub ed25519 keys on-chain (key-sync authority)\n"],
+["c","$ bun src/cli.ts sync testuser --id 4242 --pub id_ed25519.pub\n"],
+["o","synced 1 ed25519 key(s) for testuser (id 4242): 484iJE3q…W514oF\n\n"],
+["n","# 2. Anyone pays the GitHub user: SOL lands in their vault PDA\n"],
+["c","$ bun src/cli.ts fund 4242 2\n"],
+["o","funded 3yTsAk2LVXgCRDPGKnJ13zc1n5PBLfeGaW5JMXLT7ZMo  2EhNxzqL…hAN2nLkf\n\n"],
+["n","# 3. The user spends with stock ssh-keygen. They see exactly what they sign:\n"],
+["c","$ bun src/cli.ts send 0.25 7mpY5TNt…fwX26u --id 4242 --key ~/.ssh/id_ed25519 --fee 0.001\n"],
+["h","supawallet v1\ncluster: devnet\nvault: 3yTsAk2LVXgCRDPGKnJ13zc1n5PBLfeGaW5JMXLT7ZMo\ngithub-id: 4242\nnonce: 0\nsend: 250000000 lamports\nto: 7mpY5TNtLUH7gpgUUR2aGdMKxbM8JN6DfYshEafwX26u\nrelayer-fee: 1000000\n"],
+["o","Signing file intent.txt   (ssh-keygen -Y sign -n supawallet@v1 -O hashalg=sha256)\npaid: 4g1mptgY…vHcE2b     <- native Ed25519 program + on-chain intent check\n"],
+["c","$ solana balance 7mpY5TNt…fwX26u\n"],["p","0.25 SOL\n\n"],
+["n","# 4. Takeover guard: >0.5 SOL from a key first seen <72h ago is refused\n"],
+["c","$ bun src/cli.ts send 1 7mpY5TNt…fwX26u --id 4242 --key ~/.ssh/id_ed25519\n"],["e","Error: supawallet: new key: large spends wait 72 hours (custom program error: 0x8)\n\n"],
+["n","# 5. Key deleted on GitHub -> next sync revokes it -> spend refused\n"],
+["c","$ bun src/cli.ts sync testuser --id 4242 --pub empty.pub && bun src/cli.ts send 0.1 …\n"],["e","Error: supawallet: key is not on this GitHub profile (custom program error: 0x7)\n"],
+];
+const t=document.getElementById("t");const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+(async()=>{await sleep(4500);document.getElementById("card").style.opacity=0;await sleep(700);
+for(const [cls,txt] of steps){const s=document.createElement("span");s.className=cls;t.appendChild(s);
+ if(cls==="c"){for(const ch of txt){s.textContent+=ch;await sleep(22);}await sleep(500);}else{s.textContent=txt;await sleep(cls==="h"?2600:1300);}}
+await sleep(2500);const c=document.getElementById("card");c.innerHTML="<h1>SupaWallet</h1><p>No seed phrase. No wallet app. No signup.</p><p>github.com/psycocodes/supawallet</p>";c.style.opacity=1;})();
+</script></body></html>
