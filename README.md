@@ -30,6 +30,12 @@ relayer-fee: <lamports>
 
 Solana makes this cheap: ed25519, the default `ssh-keygen` key type, is verified by a native program instead of in contract code.
 
+## Live on devnet
+
+- Program: [`EHLyW17oB3NjpPEiAGJthSDG4vsX9dV5QgWnoT6JTZ4N`](https://explorer.solana.com/address/EHLyW17oB3NjpPEiAGJthSDG4vsX9dV5QgWnoT6JTZ4N?cluster=devnet)
+- A payment signed with stock `ssh-keygen` (test GitHub ID 4242, test key): [`3p5N3rtL…ieDQQicsD`](https://explorer.solana.com/tx/3p5N3rtLRJTFVkXYoKDTj1pTwkta5N12Zr1vv8rVdGyvEvQrTqdspCkjUmiDQWWzuJdUmkUg2LzSnq9ieDQQicsD?cluster=devnet)
+- Demo video: https://youtu.be/KTiar2QqC-M
+
 ## Run it
 
 ```sh
