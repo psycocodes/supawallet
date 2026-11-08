@@ -1,0 +1,11 @@
+[package]
+name = "supawallet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+solana-program = "5.2.0"
+solana-system-interface = { version = "3.3.0", features = ["bincode"] }
+
+[lib]
+crate-type = ["cdylib", "lib"]

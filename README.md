@@ -1,4 +1,67 @@
-This is a interesting project
+# SupaWallet
+
+**Every GitHub user already has a Solana wallet. They spend it with the SSH key on their GitHub profile.**
+
+Pay anyone by GitHub ID: the SOL lands in a vault that exists before they've ever heard of SupaWallet. To spend, they sign a plain-text intent with the stock `ssh-keygen` they already have (no seed phrase, no wallet app, no signup), and a Solana program checks that signature against the keys on their GitHub profile.
+
+Built for the MLH Solana Hackathon (6–8 Nov 2026).
+
+## How it works
+
+| Piece | What it is |
+|---|---|
+| **Vault** | PDA `["vault", github_id]`: a plain system account, so anyone can send SOL to it at any time |
+| **Key set** | PDA `["keys", github_id]`: sha256 hashes of the user's GitHub `ssh-ed25519` keys plus when each was first seen. Written by a key-sync authority that reads `github.com/<user>.keys`; a key deleted on GitHub disappears at the next sync, which revokes it |
+| **Execute** | The user signs the intent below with `ssh-keygen -Y sign -n supawallet@v1 -O hashalg=sha256`. The transaction carries Solana's **native Ed25519 program** over the SSHSIG signed data; our program reads it through the instructions sysvar, rebuilds the intent and the SSHSIG signed data on-chain, checks they are exactly what was verified and that the key is on the profile, then bumps the nonce and pays. Anyone can submit and earns the signed relayer fee |
+| **Safety** | Spends over 0.5 SOL from a key first seen less than 72 hours ago are refused (account-takeover guard). Users sign readable text, never blind transaction bytes |
+
+The intent (every line ends in `\n`):
+
+```
+supawallet v1
+cluster: devnet
+vault: <vault, base58>
+github-id: <numeric GitHub id>
+nonce: <n>
+send: <lamports> lamports
+to: <recipient, base58>
+relayer-fee: <lamports>
+```
+
+Solana makes this cheap: ed25519, the default `ssh-keygen` key type, is verified by a native program instead of in contract code.
+
+## Run it
+
+```sh
+# program (native Rust, solana-program 5)
+cd program && cargo test && cargo build-sbf
+solana program deploy target/deploy/supawallet.so --program-id <program keypair>
+
+# client (Bun + @solana/web3.js)
+cd client && bun install
+bun src/cli.ts address <github-id>                     # where to pay someone
+bun src/cli.ts fund <github-id> 1                      # pay them
+AUTHORITY=<keypair> bun src/cli.ts sync <login>        # put their GitHub ed25519 keys on-chain
+bun src/cli.ts send 0.25 <to> --id <github-id> --key ~/.ssh/id_ed25519 --fee 0.001
+```
+
+`RPC` picks the cluster (default devnet), `PAYER` the keypair that pays transaction fees.
+
+**Tested** end to end on `solana-test-validator`: sync a key, fund, spend 0.25 SOL with an `ssh-keygen` signature, a 1 SOL spend from the new key is refused (error 8, 72 h delay), and after revoking the key the next spend is refused (error 7).
+
+## Limits and next steps
+
+- ed25519 keys only (P-256 via Solana's secp256r1 program is next; RSA has no native verifier).
+- The key-sync authority is a single key today; the plan is a decentralised oracle that reaches consensus on GitHub's key list.
+- Next: SPL tokens (USDC), a pay page, and git commits signed with your SSH key as payments.
+
+## AI usage
+
+Written with Claude Code (Claude Opus 5.5) pairing with the team; commits carry a `Co-Authored-By` line.
+
+## License
+
+MIT
 
 ## Hackathon submission
 

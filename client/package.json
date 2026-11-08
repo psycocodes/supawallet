@@ -1,0 +1,7 @@
+{
+  "name": "supawallet-client",
+  "private": true,
+  "type": "module",
+  "bin": { "supawallet": "src/cli.ts" },
+  "dependencies": { "@solana/web3.js": "1.98.4" }
+}
