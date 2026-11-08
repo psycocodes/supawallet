@@ -32,6 +32,7 @@ Solana makes this cheap: ed25519, the default `ssh-keygen` key type, is verified
 
 ## Live on devnet
 
+- **Web app:** https://psycocodes.github.io/supawallet/ (look up any GitHub user, pay their vault with Phantom on devnet, spend by pasting an `ssh-keygen` signature). Source: `web/index.html`, a single static page with no backend
 - Program: [`EHLyW17oB3NjpPEiAGJthSDG4vsX9dV5QgWnoT6JTZ4N`](https://explorer.solana.com/address/EHLyW17oB3NjpPEiAGJthSDG4vsX9dV5QgWnoT6JTZ4N?cluster=devnet)
 - A payment signed with stock `ssh-keygen` (test GitHub ID 4242, test key): [`3p5N3rtL…ieDQQicsD`](https://explorer.solana.com/tx/3p5N3rtLRJTFVkXYoKDTj1pTwkta5N12Zr1vv8rVdGyvEvQrTqdspCkjUmiDQWWzuJdUmkUg2LzSnq9ieDQQicsD?cluster=devnet)
 - Demo video: https://youtu.be/KTiar2QqC-M

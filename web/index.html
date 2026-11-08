@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SupaWallet</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --line:#30363d; --fg:#e6edf3; --mute:#8b949e; --acc:#9945ff; --ok:#3fb950; --bad:#f85149; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { margin:0; font-size: 40px; } .sub { color: var(--mute); margin: 4px 0 24px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin: 16px 0; }
+  h2 { margin: 0 0 12px; font-size: 20px; }
+  label { display:block; color: var(--mute); font-size: 14px; margin: 10px 0 4px; }
+  input, textarea { width:100%; background: var(--bg); color: var(--fg); border:1px solid var(--line); border-radius: 8px; padding: 10px; font: 15px ui-monospace, Menlo, Consolas, monospace; }
+  textarea { min-height: 120px; }
+  button { background: var(--acc); color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; font-size: 15px; cursor: pointer; margin-top: 12px; }
+  button.secondary { background: transparent; border: 1px solid var(--line); color: var(--fg); }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; white-space: pre-wrap; word-break: break-all; font-size: 14px; }
+  .row { display:flex; gap: 12px; flex-wrap: wrap; } .row > * { flex: 1 1 200px; }
+  .mute { color: var(--mute); font-size: 14px; } .ok { color: var(--ok); } .bad { color: var(--bad); }
+  a { color: #58a6ff; word-break: break-all; }
+</style>
+</head>
+<body>
+<main>
+  <h1>SupaWallet</h1>
+  <p class="sub">Every GitHub user already has a Solana wallet. Pay anyone by GitHub username; they spend with stock <code>ssh-keygen</code> and the SSH key on their profile. <b>Solana devnet.</b></p>
+
+  <div class="card">
+    <h2>1. Find a GitHub user's wallet</h2>
+    <div class="row">
+      <div><label for="login">GitHub username</label><input id="login" placeholder="octocat" autocomplete="off"></div>
+      <div><label for="gid">or numeric GitHub ID</label><input id="gid" placeholder="583231" inputmode="numeric"></div>
+    </div>
+    <button id="find">Look up</button>
+    <div id="who"></div>
+  </div>
+
+  <div class="card">
+    <h2>2. Pay them</h2>
+    <p class="mute">Uses Phantom (or any Solana wallet extension) set to <b>devnet</b>. The SOL lands in their vault, even if they've never heard of SupaWallet.</p>
+    <label for="payAmt">Amount (SOL)</label><input id="payAmt" value="0.1">
+    <button id="pay">Pay with wallet</button>
+    <div id="payOut"></div>
+  </div>
+
+  <div class="card">
+    <h2>3. Spend from your vault with your SSH key</h2>
+    <p class="mute">Look yourself up in step 1 first. Your ed25519 key must be synced on-chain (<code>supawallet sync</code>). Your wallet extension only pays the transaction fee as the relayer; the money moves because your SSH key signed the text below.</p>
+    <div class="row">
+      <div><label for="to">Send to (Solana address)</label><input id="to" placeholder="recipient address"></div>
+      <div><label for="amt">Amount (SOL)</label><input id="amt" value="0.01"></div>
+      <div><label for="fee">Relayer fee (SOL)</label><input id="fee" value="0"></div>
+    </div>
+    <button id="build" class="secondary">Show the text to sign</button>
+    <div id="intentBox" hidden>
+      <label>You are signing exactly this (save it as <code>intent.txt</code>, no trailing changes):</label>
+      <pre id="intent"></pre>
+      <button id="dl" class="secondary">Download intent.txt</button>
+      <label>Then run:</label>
+      <pre>ssh-keygen -Y sign -n supawallet@v1 -O hashalg=sha256 -f ~/.ssh/id_ed25519 intent.txt</pre>
+      <label for="sig">Paste the contents of <code>intent.txt.sig</code></label>
+      <textarea id="sig" placeholder="-----BEGIN SSH SIGNATURE-----"></textarea>
+      <button id="spend">Submit spend</button>
+    </div>
+    <div id="spendOut"></div>
+  </div>
+
+  <p class="mute">Program <a id="progLink" target="_blank" rel="noopener"></a> · <a href="https://github.com/psycocodes/supawallet" target="_blank" rel="noopener">source</a> · no trackers, no backend: this page talks to GitHub's public API and Solana devnet only.</p>
+</main>
+
+<script type="module">
+import {
+  Connection, PublicKey, SystemProgram, Transaction, TransactionInstruction, Ed25519Program,
+  SYSVAR_INSTRUCTIONS_PUBKEY, LAMPORTS_PER_SOL,
+} from "https://esm.sh/@solana/web3.js@1.98.4";
+
+const PROGRAM_ID = new PublicKey("EHLyW17oB3NjpPEiAGJthSDG4vsX9dV5QgWnoT6JTZ4N");
+const NAMESPACE = "supawallet@v1";
+const conn = new Connection("https://api.devnet.solana.com", "confirmed");
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder();
+const explorer = (kind, v) => `https://explorer.solana.com/${kind}/${v}?cluster=devnet`;
+$("progLink").href = explorer("address", PROGRAM_ID.toBase58()); $("progLink").textContent = PROGRAM_ID.toBase58();
+
+const u64 = (n) => { const b = new Uint8Array(8); new DataView(b.buffer).setBigUint64(0, BigInt(n), true); return b; };
+const cat = (...a) => { const o = new Uint8Array(a.reduce((s, x) => s + x.length, 0)); let i = 0; for (const x of a) { o.set(x, i); i += x.length; } return o; };
+const pda = (seed, id) => PublicKey.findProgramAddressSync([enc.encode(seed), u64(id)], PROGRAM_ID)[0];
+const sshString = (b) => { const l = new Uint8Array(4); new DataView(l.buffer).setUint32(0, b.length); return cat(l, b); };
+const sha256 = async (b) => new Uint8Array(await crypto.subtle.digest("SHA-256", b));
+const lamports = (s) => BigInt(Math.round(Number(s) * LAMPORTS_PER_SOL));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+let current = null; // { id, login }
+
+function intent(vault, id, nonce, amount, to, fee) {
+  return `supawallet v1\ncluster: devnet\nvault: ${vault.toBase58()}\ngithub-id: ${id}\nnonce: ${nonce}\n` +
+    `send: ${amount} lamports\nto: ${to.toBase58()}\nrelayer-fee: ${fee}\n`;
+}
+async function signedData(message) {
+  return cat(enc.encode("SSHSIG"), sshString(enc.encode(NAMESPACE)), sshString(new Uint8Array()),
+    sshString(enc.encode("sha256")), sshString(await sha256(message)));
+}
+function parseSshSig(armored) {
+  const b = Uint8Array.from(atob(armored.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "")), (c) => c.charCodeAt(0));
+  const dv = new DataView(b.buffer); let o = 10;
+  if (new TextDecoder().decode(b.subarray(0, 6)) !== "SSHSIG") throw new Error("That is not an SSH signature.");
+  const str = () => { const l = dv.getUint32(o); o += 4; const s = b.subarray(o, o + l); o += l; return s; };
+  const pub = str(), ns = new TextDecoder().decode(str()); str(); const alg = new TextDecoder().decode(str()); const sig = str();
+  if (ns !== NAMESPACE || alg !== "sha256") throw new Error(`Signed with namespace "${ns}" and hash ${alg}; use -n ${NAMESPACE} -O hashalg=sha256.`);
+  const inner = (x) => { const v = new DataView(x.buffer, x.byteOffset); const l1 = v.getUint32(0); const t = new TextDecoder().decode(x.subarray(4, 4 + l1)); const l2 = v.getUint32(4 + l1); return [t, x.subarray(8 + l1, 8 + l1 + l2)]; };
+  const [kt, publicKey] = inner(pub); const [, signature] = inner(sig);
+  if (kt !== "ssh-ed25519") throw new Error(`Key type ${kt}: only ssh-ed25519 keys are supported on Solana so far.`);
+  return { publicKey, signature };
+}
+async function wallet() {
+  const w = window.phantom?.solana ?? window.solana;
+  if (!w) throw new Error("No Solana wallet extension found. Install Phantom and switch it to devnet.");
+  await w.connect(); return w;
+}
+async function sendWithWallet(tx) {
+  const w = await wallet();
+  tx.feePayer = w.publicKey; tx.recentBlockhash = (await conn.getLatestBlockhash()).blockhash;
+  const signed = await w.signTransaction(tx);
+  const sig = await conn.sendRawTransaction(signed.serialize());
+  await conn.confirmTransaction(sig, "confirmed");
+  return { sig, payer: w.publicKey };
+}
+
+$("find").onclick = async () => {
+  const out = $("who"); out.innerHTML = "<p class='mute'>Looking up…</p>";
+  try {
+    let id = $("gid").value.trim(), login = $("login").value.trim();
+    if (!id) {
+      const r = await fetch(`https://api.github.com/users/${encodeURIComponent(login)}`);
+      if (!r.ok) throw new Error(`GitHub says ${r.status} for "${login}".`);
+      const u = await r.json(); id = String(u.id); login = u.login;
+    }
+    current = { id: BigInt(id), login: login || `id ${id}` };
+    const vault = pda("vault", current.id);
+    const [bal, keys] = await Promise.all([conn.getBalance(vault), conn.getAccountInfo(pda("keys", current.id))]);
+    const nKeys = keys ? keys.data[0] : 0;
+    out.innerHTML = `<p><b>${esc(current.login)}</b> (GitHub ID ${id})</p>
+      <p>Vault: <a target="_blank" rel="noopener" href="${explorer("address", vault.toBase58())}">${vault.toBase58()}</a><br>
+      Balance: <b>${bal / LAMPORTS_PER_SOL} SOL</b><br>
+      SSH keys synced on-chain: <b>${nKeys}</b>${nKeys ? "" : " <span class='mute'>(they can receive now and sync keys later)</span>"}</p>`;
+  } catch (e) { out.innerHTML = `<p class="bad">${esc(e.message)}</p>`; }
+};
+
+$("pay").onclick = async () => {
+  const out = $("payOut");
+  try {
+    if (!current) throw new Error("Look someone up first.");
+    out.innerHTML = "<p class='mute'>Approve in your wallet…</p>";
+    const w = await wallet();
+    const tx = new Transaction().add(SystemProgram.transfer({ fromPubkey: w.publicKey, toPubkey: pda("vault", current.id), lamports: lamports($("payAmt").value) }));
+    const { sig } = await sendWithWallet(tx);
+    out.innerHTML = `<p class="ok">Paid ${esc($("payAmt").value)} SOL to ${esc(current.login)}. <a target="_blank" rel="noopener" href="${explorer("tx", sig)}">View transaction</a></p>`;
+    $("find").onclick();
+  } catch (e) { out.innerHTML = `<p class="bad">${esc(e.message)}</p>`; }
+};
+
+let pending = null;
+$("build").onclick = async () => {
+  const out = $("spendOut"); out.innerHTML = "";
+  try {
+    if (!current) throw new Error("Look yourself up in step 1 first.");
+    const state = await conn.getAccountInfo(pda("state", current.id));
+    if (!state) throw new Error("No SSH keys are synced for this GitHub ID yet, so it can receive but not spend.");
+    const nonce = new DataView(state.data.buffer, state.data.byteOffset).getBigUint64(0, true);
+    const to = new PublicKey($("to").value.trim());
+    pending = { id: current.id, to, amount: lamports($("amt").value), fee: lamports($("fee").value) };
+    pending.text = intent(pda("vault", current.id), current.id, nonce, pending.amount, to, pending.fee);
+    $("intent").textContent = pending.text; $("intentBox").hidden = false;
+  } catch (e) { out.innerHTML = `<p class="bad">${esc(e.message)}</p>`; }
+};
+$("dl").onclick = () => {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([pending.text], { type: "text/plain" }));
+  a.download = "intent.txt"; a.click();
+};
+$("spend").onclick = async () => {
+  const out = $("spendOut");
+  try {
+    const { publicKey, signature } = parseSshSig($("sig").value);
+    const verify = Ed25519Program.createInstructionWithPublicKey({ publicKey, signature, message: await signedData(enc.encode(pending.text)) });
+    out.innerHTML = "<p class='mute'>Approve the fee in your wallet (you are the relayer)…</p>";
+    const w = await wallet();
+    const exec = new TransactionInstruction({ programId: PROGRAM_ID, data: cat(new Uint8Array([1]), u64(pending.id), u64(pending.amount), u64(pending.fee)), keys: [
+      { pubkey: w.publicKey, isSigner: true, isWritable: true },
+      { pubkey: pda("vault", pending.id), isSigner: false, isWritable: true },
+      { pubkey: pda("state", pending.id), isSigner: false, isWritable: true },
+      { pubkey: pda("keys", pending.id), isSigner: false, isWritable: false },
+      { pubkey: pending.to, isSigner: false, isWritable: true },
+      { pubkey: SYSVAR_INSTRUCTIONS_PUBKEY, isSigner: false, isWritable: false },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ] });
+    const { sig } = await sendWithWallet(new Transaction().add(verify, exec));
+    out.innerHTML = `<p class="ok">Spent with your SSH key. <a target="_blank" rel="noopener" href="${explorer("tx", sig)}">View transaction</a></p>`;
+  } catch (e) { out.innerHTML = `<p class="bad">${esc(e.message)}${e.logs ? "<pre>" + esc(e.logs.join("\n")) + "</pre>" : ""}</p>`; }
+};
+
+const q = new URLSearchParams(location.search);
+if (q.get("user")) { $("login").value = q.get("user"); $("find").onclick(); }
+if (q.get("id")) { $("gid").value = q.get("id"); $("find").onclick(); }
+</script>
+</body>
+</html>
